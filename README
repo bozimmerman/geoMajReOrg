@@ -1,0 +1,14 @@
+MajReOrg (C)2001-2019 Bo Zimmerman
+Please read the LICENSE file for license information
+Please read the NOTICE file for credits information
+Home Page: http://www.zimmers.net/geos/
+
+The Major ReOrg is a GEOS application which provides a combination directory organizer and GEOS file information editor.  MajReOrg will run on GEOS 64 or 128 v2.0 or higher.  It will also run on Wheels 64 and 128, as well as MP3 and gateWay.
+
+Instructions for using MajReOrg can be read online at https://github.com/bozimmerman/geoMajReOrg/tree/master/src-html/MajReOrgDocs.html . The instructions are also in geoWrite format in the src-geowrite directory.
+
+Building:
+MajReOrg was built using Concept for Wheels 64.  It might also build using geoProgrammer, but hasn't been tested.  In addition to the provided source, you'll require several components and libraries from the geoModules project:
+https://github.com/bozimmerman/geoModules
+
+

@@ -1,0 +1,1515 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+.if 	Pass1
+.include	GEOSequates
+.endif
+
+ProgStart:	jsr	ClrScrn
+	jsr	Fix80
+	ldb	IsFolderOn,#0
+	jsr	FolderOff
+ReStart:	jsr	OpenDisk	; reopen current disk
+	ldx	#A1L
+	jsr	GetPtrCurDkNm
+	ldw	A2,#DiskName	; now copy disk name
+	ldy	#0
+10$:	lda	(A1),y
+	beq	11$
+	cmp	#$a0
+	beq	11$
+	sta	(A2),y
+	iny
+	cpy	#16
+	bne	10$
+11$:	ldw	SysDir,#0
+	lda	#0
+	sta	(A2),y
+	jsr	DlgBox	; the opening box
+	cbi	sysDBData,#$06	; disk icon
+	bne	12$
+	jsr	FBOXchgd
+	bra	98$
+12$:	cmp	#$02	; error icon
+	bne	13$
+	jmp	ByeByeNow
+13$:	cmp	#$01
+	bne	14$
+	jmp	Begin	; start the application
+14$:
+98$:	jmp	ReStart
+
+ByeByeNow:	jsr	FolderOff
+	jmp	EnterDeskTop
+
+
+
+FolderOn:	lda	IsFolderOn
+	beq	10$
+	rts
+10$:	lda	GMode
+	beq	11$
+	jsr	MouseOff
+11$:	ldb	IsFolderOn,#1
+	ldb	R3L,#2
+	ldw	R4,#sFolder2
+	jsr	DrawSprite
+	ldb	R3L,#2
+	jsr	EnablSprite
+	rts
+
+FolderOff:	lda	IsFolderOn
+	bne	10$
+	rts
+10$:	ldb	IsFolderOn,#0
+	ldb	R3L,#2
+	jsr	DisablSprite
+	lda	GMode
+	beq	11$
+	jsr	MouseUp
+11$:	rts
+
+Fix80:	ldw	GMode,#0
+	cwi	rightMargin,#320
+	bgt	10$
+	rts
+10$:	ldb	GMode+1,#$80
+
+F802:	ldx	#0
+11$:	lda	F80TAB2,x
+	beq	99$
+	sta	R0L
+	inx
+	lda	F80TAB2,x
+	sta	R0H
+	inx
+	txa
+	pha
+	jsr	Fix80p
+	pla
+	tax
+	bne	11$
+99$:	jmp	F803
+F80TAB2:	.word CVT1,CVT2,CVT3,CVT4,CVT5,CVT6,CVT7,CVT8,INF1,INF2,INF3,0
+
+F803:	ldx	#0
+10$:	lda	F80TAB,x
+	beq	99$
+	sta	R0L
+	inx
+	lda	F80TAB,x
+	sta	R0H
+	inx
+	ldy	#0
+	lda	(R0),y
+	ora	#$80
+	sta	(R0),y
+	ldy	#2
+	lda	(R0),y
+	ora	#$80
+	sta	(R0),y
+	bra	10$
+99$:	lda	CVP1
+	ora	#$80
+	sta	CVP1
+	rts
+F80TAB:	.word CVB1,CVB2,CVB3,IGX1,IGX2,IGX3,IGX4,0
+
+
+
+Fix80p:	ldy	#0
+	lda	(R0),y	; a null ends the fun
+	beq	99$
+	tax
+	lda	FIX80x,x	; cross ref to x offset
+	beq	10$	; if EQ, skip to next step
+	tay
+	lda	(R0),y	; otherwise, get x byte
+	clc
+	adc	#$80	; add #$80
+	sta	(R0),y
+10$:	lda	FIX80len,x	; now get next cmd offset
+	beq	99$	; eq means no more
+	clc
+	adc	R0L
+	sta	R0L
+	lda	#$00
+	adc	R0H
+	sta	R0H
+	jmp	Fix80p
+99$:	rts
+FIX80len:	.byte 0,4,4,4,1,2,0,4,3,2,4
+FIX80x:	.byte 0,2,2,2,0,0,2,2,2,0,2
+
+OpenPres:	lda	mouseData
+	beq	10$
+	rts		; click or release, I dont recall
+10$:	ldb	R2L,#$4e
+	ldb	R2H,#$58
+	ldw	R3,#$53
+	ldw	R4,#$5f
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion
+	cmp	#$ff
+	beq	11$
+	rts
+11$:	jsr	InvertRectangle
+	lda	SysDir
+	eor	#$01
+	sta	SysDir
+	rts
+		
+
+Begin:	ldw	R1,#DirChain
+	ldw	R0,#512
+	jsr	ClearRam	; clear dir chain
+	ldw	SrcDCPtr,#DirChain
+
+	ldw	R1,#DestBlks
+	ldw	R0,#512
+	jsr	ClearRam	; clear first dest blocks
+
+	jsr	OpenDisk
+	cpx	#0
+	beq	10$
+	jsr	FError
+	jmp	ByeByeNow
+10$:	lda	SysDir	; was SysDir selected?
+	beq	11$
+	ldy	#171	; yes, so look for one
+	lda	$8200,y
+	sta	SysDir	; and copy it in place
+	iny
+	lda	$8200,y
+	sta	SysDir+1
+11$:	mvw	SysDir,R1	; assume a SysDir
+	lda	SysDir	; *IS* there a sys dir?
+	bne	12$
+	mvw	$8200,R1	; then move frst block ptr	
+12$:	ldw	R3,#DirChain	; and get all file blocks please
+	jsr	FollowChain	; thank you.
+	cpx	#0
+	beq	13$
+	jsr	FError
+	jmp	ByeByeNow
+
+13$:	ldw	DstBPtrT,#DestBlks	; initialiZe dest list
+	ldw	DstBPtrB,#DestBlks+2
+
+	jsr	DrwScn
+	lda	#1
+	jsr	UpdateS	; initialiZe source filenames
+	jsr	UpdateD	; and dest filenames
+
+	ldw	OtherPressVec,#DoPress
+	rts
+
+DoPress:	lda	mouseData
+	beq	10$
+	lda	SelWin	; release only sig for drags
+	beq	20$
+	jmp	PresChkF		; this is a RELEASE
+10$:	ldb	R2L,#$05	; check close box
+	ldb	R2H,#$0d
+	ldw	R3,#$0124
+	ldw	R4,#$0139
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion	; close box pressed?
+	cmp	#$ff
+	bne	11$
+	jmp	DoClose
+11$:	jsr	PresChkF
+	jsr	PresChkA
+	jsr	PresChkM
+	jsr	PresM2
+20$:	rts
+
+
+
+PresChkA:	ldb	R2L,#$1b	; start the src up arrows
+	ldb	R2H,#$1b
+	avb	#33,R2H
+	ldw	R3,#$14
+	ldw	R4,#$1f
+	jsr	Fix80R3R4
+	cwi	SrcDCPtr,#DirChain	; already up?
+	ble	10$
+	jsr	IsMseInRegion
+	cmp	#$ff	; in source top arrow?
+	bne	10$
+	ldw	SrcDCPtr,#DirChain	; good, so move up
+	jmp	PresSBut	; yes, so show it
+10$:	mvb	R2H,R2L
+	avb	#35,R2H
+	cwi	SrcDCPtr,#DirChain	; already up?
+	ble	11$
+	jsr	IsMseInRegion	; in source up arrow?
+	cmp	#$ff
+	bne	11$
+	svw	#4,SrcDCPtr
+	cwi	SrcDCPtr,#DirChain
+	bge	90$
+	ldw	SrcDCPtr,#DirChain
+90$:	jmp	PresSBut	; yes, so show it
+11$:
+PresCkA2:	mvw	SrcDCPtr,A0	; start the downsters
+	ldy	#2
+	lda	(A0),y	; is there even a 2nd half pg?
+	bne	99$	; if no, then skip
+	jmp	PresCkA3	; pretty drastic skip
+99$:	mvb	R2H,R2L
+	avb	#34,R2H
+	jsr	IsMseInRegion	; in source down arrow?
+	cmp	#$ff
+	bne	12$
+	ldy	#4
+	lda	(A0),y	; is there a NEXT page?
+	beq	12$	; if no, then skip
+	avw	#4,SrcDCPtr
+	jmp	PresSBut	; yes, so show it
+12$:	mvb	R2H,R2L
+	avb	#36,R2H
+	jsr	IsMseInRegion	; in source bottom arrow?
+	cmp	#$ff
+	bne	13$
+98$:	avw	#2,A0	; move to next page
+	ldy	#0	; does this exist?
+	lda	(A0),y
+	bne	98$
+	svw	#4,A0	; so this must be bottom
+	mvw	A0,SrcDCPtr
+	jmp	PresSBut	; yes, so show it
+13$:	jmp	PresCkA3
+
+PresSBut:	jsr	InvertRectangle
+	jsr	SaveStuff
+	lda	#1
+	jsr	UpdateS	; so show the bottom
+	jsr	LoadStuff
+	jmp	InvertRectangle
+
+PresCkA3:	ldb	R2L,#$1b
+	ldb	R2H,#$1b
+	avb	#33,R2H
+	ldw	R3,#$0124
+	ldw	R4,#$012f
+	jsr	Fix80R3R4
+	cwi	DstBPtrT,#DestBlks	; already at the top?
+	ble	14$	; if yes, then ignore
+	jsr	IsMseInRegion
+	cmp	#$ff	; in dest top arrow?
+	bne	14$
+	ldw	DstBPtrT,#DestBlks
+	jmp	PresDBut
+14$:	mvb	R2H,R2L
+	avb	#35,R2H
+	cwi	DstBPtrT,#DestBlks	; already at the top?
+	ble	15$	; if yes, then ignore
+	jsr	IsMseInRegion	; in dest up arrow?
+	cmp	#$ff
+	bne	15$
+	svw	#512,DstBPtrT
+	cwi	DstBPtrT,#DestBlks
+	bge	90$
+	ldw	DstBPtrT,#DestBlks
+90$:	jmp	PresDBut
+15$:
+PresCkA4:	mvb	R2H,R2L	; prepare for next button
+	avb	#34,R2H
+	mvw	DstBPtrT,Temp2	; now look ahead
+	avw	#512,Temp2	; two pages
+	cpw	Temp2,DstBPtrB	; is that beyond the end?
+	bge	16$	; if yes, don't check to see if
+	jsr	IsMseInRegion	; in dest down arrow?
+	cmp	#$ff
+	bne	16$
+	mvw	Temp2,DstBPtrT
+	jmp	PresDBut
+16$:	mvb	R2H,R2L	; prepare for last button
+	avb	#36,R2H
+	cpw	Temp2,DstBPtrB	; are we beyond the end?
+	bge	18$
+	jsr	IsMseInRegion	; in dest bottom arrow?
+	cmp	#$ff
+	bne	18$
+17$:	avw	#256,Temp2	; prepare to
+	cpw	Temp2,DstBPtrB	; loop to the end
+	blt	17$
+	mvw	Temp2,DstBPtrT
+	svw	#512,DstBPtrT	; and move back for full view
+	jmp	PresDBut
+18$:	rts
+PresDBut:	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	UpdateD	; so show the bottom
+	jsr	LoadStuff
+	jmp	InvertRectangle
+
+PresChkM:	ldb	R2L,#$35	; start the dst up arrows
+	sta	R2H
+	avb	#11,R2H
+	ldw	R3,#$9c
+	ldw	R4,#$a8
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion
+	cmp	#$ff	; move to dest arrow
+	bne	10$
+	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	DoMoveR
+	jsr	LoadStuff
+	jmp	InvertRectangle
+10$:	avb	#14,R2L
+	mvb	R2L,R2H
+	avb	#11,R2H
+	jsr	IsMseInRegion	; erase from dest arrow
+	cmp	#$ff
+	bne	11$
+	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	DoMoveL
+	jsr	LoadStuff
+	jmp	InvertRectangle
+11$:	avb	#13,R2L
+	mvb	R2L,R2H
+	avb	#26,R2H
+	jsr	IsMseInRegion	; add blank arrow
+	cmp	#$ff
+	bne	12$
+	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	DoInsBlank
+	jsr	LoadStuff
+	jmp	InvertRectangle
+12$:	rts
+
+SaveStuff:	mvw	R2,Temp2
+	mvw	R3,Temp2+2
+	mvw	R4,Temp2+4
+	rts
+LoadStuff:	mvw	Temp2,R2
+	mvw	Temp2+2,R3
+	mvw	Temp2+4,R4
+	rts
+
+PresM2:	ldb	R2L,#$6c	; start the dst up arrows
+	sta	R2H
+	avb	#11,R2H
+	ldw	R3,#$9c
+	ldw	R4,#$a8
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion
+	cmp	#$ff	; move to dest arrow
+	bne	13$
+	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	i_YNBox
+	.word FlushRtxt0
+	jsr	LoadStuff
+	jsr	InvertRectangle
+	cbi	sysDBData,#$03
+	bne	11$
+	jsr	MoveRestR
+11$:	rts
+13$:	avb	#14,R2L
+	mvb	R2L,R2H
+	avb	#11,R2H
+	jsr	IsMseInRegion	; erase from dest arrow
+	cmp	#$ff
+	bne	20$
+	jsr	InvertRectangle
+	jsr	SaveStuff
+	jsr	i_YNBox
+	.word FlushLtxt0
+	cbi	sysDBData,#$03
+	bne	15$
+	ldw	R1,#DstSels
+	ldw	R0,#10240+16
+	jsr	ClearRam	; clear dest blocks
+	ldw	DstBPtrT,#DestBlks	; initialiZe dest list
+	ldw	DstBPtrB,#DestBlks+2
+	jsr	UpdateD
+	jsr	UpdateS
+15$:	jsr	LoadStuff
+	jmp	InvertRectangle
+20$:	rts
+FlushLtxt0:	.byte	$18,"Flush and start over?",27,0
+FlushRtxt0:	.byte	$18,"Move remaining source files?",27,0
+
+PresChkF:	lda	mouseData
+	beq	11$
+	jsr	DonePress	; this is a RELEASE
+10$:	rts
+11$:	ldb	SelWin,#0	; initialize where we started
+	jsr	InWhichBox	; now look where we are?
+	bne	20$
+99$:	rts		; not in a box? bye bye
+20$:	sta	SelWin	; set up for drag
+	ldb	BoxFnd,#$ff
+	jsr	ChkFiles	; find which file we're in
+	bne	21$	; 0 = nada!?
+	lda	#$ff
+21$:	sta	SelLst	; to initialize LAST file
+	sei		; now set the vector
+	ldw	appMain,#SelMove
+	cli		; and exit
+	rts
+
+DonePress:	sei		; first, undo the move vector
+	ldw	appMain,#0
+	cli
+	jsr	FolderOff
+	jsr	InWhichBox	; which window are we in?
+	cmp	SelWin	; same as we started?
+	bne	20$	; if not, special case
+	lda	SelLst
+	cmp	#$ff	; now selecting. Is good?
+	beq	12$
+	sta	BoxFnd	; yes, so get pointer
+	jsr	ChkFiles	; from ChkFiles
+	beq	12$	; 0 = outside file limits
+	cmp	#$ff
+	beq	12$	; is it still good?
+	cmp	SelLst	; start checking double click
+	bne	11$	; DblClk must be the same file
+	cbi	SelWin,#1	; must be source window too
+	bne	11$
+	lda	dblClickCount
+	beq	11$	; DblClick must be fast enough
+	jsr	Information	; qualified, so info box!!
+	bra	12$
+11$:	ldb	DblClickCount,#20	; reset double click
+	jsr	Invertify	; invertify
+12$:	ldb	SelWin,#0	; and clear drag mode
+	rts
+20$:	cmp	#0	; in ANY window?
+	beq	12$	; nah, so ferget it
+	cmp	#1	; now in source window?
+	bne	21$
+	jsr	SaveStuff
+	jsr	DoMoveL	; yes, so move left
+	jsr	LoadStuff
+	bra	22$
+21$:	jsr	SaveStuff
+	jsr	DoMoveR	; and yes, so move right
+	jsr	LoadStuff
+22$:	ldb	SelWin,#0
+	rts
+
+InWhichBox:	ldb	R2L,#$1b	; check filenames routine
+	ldb	R2H,#$a5
+	ldw	R3,#$2c
+	ldw	R4,#$95
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion
+	cmp	#$ff	; in the source box?
+	bne	15$
+	lda	#1
+	rts
+15$:	ldb	R2L,#$1b
+	ldb	R2H,#$a5
+	ldw	R3,#$ac
+	ldw	R4,#$0115
+	jsr	Fix80R3R4
+	jsr	IsMseInRegion
+	cmp	#$ff	; in the dest box?
+	bne	20$
+	lda	#2
+	rts
+20$:	lda	#0	; nada
+	rts
+
+Fix80R3R4:	adw	GMode,R3
+	adw	GMode,R4
+	rts	
+Fix80A3A4:	adw	GMode,A3
+	adw	GMode,A4
+	rts	
+	
+
+ChkFiles:	cbi	SelWin,#2	; which box moving from?
+	beq	10$
+	jsr	ChkFSrc	; check the source files
+	bra	11$
+10$:	jsr	ChkFDst	; check the dest files
+11$:	lda	BoxIdx
+	rts
+
+ChkFDst:	ldw	A1,#DstSels	; check for click in dest top8
+	ldb	A2L,#$1c
+	ldw	A3,#$b6
+	ldw	A4,#$010a
+	jsr	Fix80A3A4
+	jsr	BoxPres8
+	beq	10$
+	rts
+10$:	lda	BoxFnd	; in bot 8, so fix search code
+	cmp	#$ff
+	beq	11$	; bad search no need adjust
+	sec
+	sbc	#$08	; adjust index
+	sta	BoxFnd
+11$:	ldw	A1,#DstSels+8	; check for click in dest bot8
+	ldb	A2L,#$60
+	jsr	BoxPres8
+	beq	20$
+	cmp	#$ff
+	beq	20$
+	avb	#8,BoxIdx	; fix index for bottom 8
+20$:	rts
+
+ChkFSrc:	ldw	A1,#SrcSels
+	ldb	A2L,#$1c
+	ldw	A3,#$36
+	ldw	A4,#$8a
+	jsr	Fix80A3A4
+	jsr	BoxPres8
+	beq	10$
+	rts
+10$:	lda	BoxFnd
+	cmp	#$ff
+	beq	11$
+	sec
+	sbc	#$08
+	sta	BoxFnd
+11$:	ldw	A0,#SrcBlk2
+	ldw	A1,#SrcSels+8
+	ldb	A2L,#$60
+	jsr	BoxPres8
+	beq	20$
+	cmp	#$ff
+	beq	20$
+	avb	#8,BoxIdx
+20$:	rts
+
+BoxPres8:	ldb	BoxIdx,#1	; 8 counter
+10$:	ldy	#0
+	mvb	A2L,R2L
+	sta	R2H
+	avb	#$08,R2H	; set top and bottom
+	mvw	A3,R3
+	mvw	A4,R4	; set left and right
+	lda	BoxFnd
+	cmp	BoxIdx
+	beq	14$	; special cheese checks
+	cmp	#$ff	; special cheese check
+	bne	16$
+	jsr	IsMseInRegion	; now see if mouse in there
+	cmp	#$ff
+	bne	16$	; not in box? then next...
+14$:	lda	(A1),y
+	cmp	#$ff	; is it messed (empty?)
+	beq	15$
+	lda	BoxIdx	; something found, return
+	rts
+15$:	ldb	BoxIdx,#$ff
+	rts
+16$:	inc	BoxIdx
+	avb	#$08,A2L	; adjust the y coordinate
+	cbi	BoxIdx,#5	; further adjustment needed
+	bne	17$
+	avb	#$02,A2L	; do the row adjustment
+17$:	cbi	BoxIdx,#9
+	beq	18$
+	inw	A1	; increment selections list
+	bra	10$	; if not, continue
+18$:	lda	#0	; nothing found, return nada
+	sta	BoxIdx
+	rts
+
+MoveRestR:	cwi	SrcDCPtr,#DirChain
+	beq	10$
+	ldw	SrcDCPtr,#DirChain	; good, so move up
+	jsr	PresSBut	; yes, so show it
+10$:
+RMLp0:	ldw	A0,#SrcBlk1+2	; start with first block
+	ldb	Temp3,#0	; a counter
+RMLp1:	ldy	#0
+	lda	(A0),y	; anything THERE?
+	beq	RMLp2
+	mvw	A0,A2
+	jsr	FSrcNDst	; is this file already there?
+	beq	RMLp2	; if found, dont add it
+10$:	jsr	AddA0UseA1	; it is, so add it
+	mvw	Temp3+5,R1	; Temp3+5 comes from jsr
+	ldw	R0,#256	; initializing something
+	jsr	ClearRam	; initialize it please
+RMLp2:	avw	#32,A0	; increment block pointer
+	inc	Temp3	; increment index to srcsels
+	cbi	Temp3,#16	; have we exceeded 2 pgs?
+	bne	11$
+	ldy	#4
+	lda	SrcDCPtr,y	; is there a NEXT page?
+	beq	15$	; if no, then skip
+	avw	#4,SrcDCPtr
+	jsr	UpdateS
+	jmp	RMLp0
+	; go down a page, and probably continue
+15$:	lda	#0		; *** could be much smarter
+	jsr	UpdateS	; yes so update (clr boxes?)
+	jsr	UpdateD	; and possibly add filenames?
+10$:	rts		; and exit
+11$:	cbi	Temp3,#8	; ready to flip to page 2?
+	bne	12$	; no, so continue
+	ldw	A0,#SrcBlk2	; start with first block
+	avw	#2,A0	; and increment to second one
+12$:	jmp	RMLp1	; and move on	
+
+SelMove:	jsr	InWhichBox
+	cmp	SelWin	; are we even in the box?
+	bne	20$	; no, so skip to movement
+	jsr	FolderOff
+	ldb	BoxFnd,#$ff
+	jsr	ChkFiles
+	sta	TmpFDex
+	beq	13$	; if outside the limits, NO
+10$:	cmp	SelLst	; same as last one?
+	beq	13$
+	cbi	SelLst,#$ff
+	beq	12$
+	mvb	SelLst,BoxFnd	; restore last clicked file
+	jsr	ChkFiles
+	beq	13$	; 0 = nada!?
+11$:	jsr	Invertify	; if yes, invert it
+12$:	mvb	TmpFDex,SelLst	; and make THIS the last
+13$:	rts		; if same as last, exit
+20$:	jsr	FolderOn
+	mvw	mouseXPos,R4
+	svw	#5,R4
+	mvb	mouseYPos,R5L
+	svb	#3,R5L
+	ldb	R3L,#2
+	jsr	PosSprite
+	rts
+
+Invertify:	dec	R2H
+	jsr	InvertRectangle	; in box, so invert
+	ldy	#0	; and now invert sel
+	lda	(A1),y
+	eor	#$01
+	sta	(A1),y	; that outa do it
+	rts
+
+UpdateS:	sta	SrcLdF
+	jsr	ResetTNS
+	ldy	#0	; fuZZy all selections
+11$	lda	#$ff	; fuZZy them all up first
+	sta	SrcSels,y
+	iny
+	cpy	#16	; to save empty block cases
+	blt	11$
+	jsr	i_GraphicsString
+CVT1:	.byte $05,$00
+	.byte	$01,$36,$00,$1c	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$8b,$00,$a4	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$33,$00,$5f
+	.byte	$02,$8b,$00,$5f
+	.byte $00
+
+UpS2:	lda	SrcTNS1	; if not a block, don't do
+	beq	13$
+	lda	SrcLdF
+	beq	12$
+	ldw	R1,#SrcBlk1
+	ldw	R0,#256	; clear dir block
+	jsr	ClearRam
+	mvw	SrcTNS1,R1
+	ldw	R4,SrcBlk1	; now get the first
+	jsr	GetBlock
+	cpx	#0
+	beq	12$
+	jsr	FError
+	jmp	ByeByeNow
+12$:	ldb	A0L,#$22	; first filename Y position
+	ldw	A2,#SrcBlk1+2
+	ldw	A3,#SrcBlk2
+	ldb	Temp1+19,#0
+	ldw	A5,SrcSels
+	ldw	A6,#$36
+	jsr	UpDFNames
+
+13$:	lda	SrcTNS2	; if not a block, don't do
+	beq	15$
+	lda	SrcLdF
+	beq	14$
+	ldw	R1,#SrcBlk2
+	ldw	R0,#256	; clear dir block
+	jsr	ClearRam
+	mvw	SrcTNS2,R1
+	ldw	R4,SrcBlk2	; now get the second
+	jsr	GetBlock
+	cpx	#0
+	beq	14$
+	jsr	FError
+	jmp	ByeByeNow
+14$:	avb	#$03,A0L	; first filename Y position
+	ldw	A2,#SrcBlk2+2
+	ldw	A3,#SrcBlk2+256
+	ldb	Temp1+19,#0
+	ldw	A5,SrcSels+8
+	ldw	A6,#$36
+	jsr	UpDFNames
+15$:	rts
+
+ResetTNS:	mvw	SrcDCPtr,A0
+	ldy	#0
+10$:	lda	(A0),y	; fetch dirchain pointers
+	sta	SrcTNS1,y
+	iny
+	cpy	#4	; both blocks please
+	blt	10$
+	rts
+
+UpDFNames:	ldy	#0	; does file exist?
+	lda	#$ff	; mess selection, by default
+	sta	(A5),y
+	ldy	#1
+	lda	(A2),y	; first check anything AT ALL?
+	beq	12$	; if not, stay fuZZy, and skip
+	cwi	A5,#SrcSels
+	blt	90$	; check for dest only if src
+	cwi	A5,#SrcSels+16
+	bgt	90$	; defined by A5 parm
+	ldy	#0
+	lda	(A2),y	; now check file type
+	beq	12$	; if null, skip
+	jsr	FSrcNDst	; if in src, check for dest
+	beq	12$
+90$:	ldy	#0
+	tya		; clear selection, for draw
+	sta	(A5),y
+	ldy	#3
+10$:	lda	(A2),y	; start copying filename
+	beq	11$
+	cmp	#$a0
+	beq	11$
+	sta	Temp1-2,y
+	iny
+	cpy	#19	; 16+3=19
+	bne	10$
+11$:	lda	#0	; finish copying filename
+	sta	Temp1-2,y
+	ldb	Temp1,#27	; set styles off
+	ldw	R0,#Temp1
+	mvw	A6,R11	; set the filename column
+	adw	GMode,R11
+	mvw	A0L,R1H	; set the filename row
+	jsr	PutString	; and display it, yeah!
+12$:	inc	Temp1+19
+	avb	#$08,A0L	; adjust the y coordinate
+	cbi	Temp1+19,#4	; further adjustment needed
+	bne	13$
+	avb	#$02,A0L	; do the row adjustment
+13$:	avw	#32,A2
+	cpw	A2,A3	; are we out of block files?
+	bge	14$
+	inw	A5	; increment selections list
+	jmp	UpDFNames	; if not, continue
+14$:	rts
+
+FSrcNDst:	ldw	A4,#DestBlks+2	; start looking
+10$:	cpw	A4,DstBPtrB	; but are we done already?
+	blt	11$	; if yes, skip
+	ldx	#$ff	; return a NOT FOUND
+	rts
+11$:	ldy	#0
+12$:	lda	(A4),y	; is there anything at all?
+	cmp	(A2),y
+	bne	13$
+	iny
+	cpy	#$13
+	blt	12$
+	ldx	#0
+	rts		; same, so return a "found"
+13$:	avw	#32,A4	; continue searching dest blk
+	bra	10$
+
+UpdateD:	jsr	i_GraphicsString
+CVT2:	.byte $05,$00
+	.byte	$01,$b2,$00,$1c	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$0a,$01,$a4	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$af,$00,$5f
+	.byte	$02,$10,$01,$5f
+	.byte $00
+
+	ldy	#0	; fuZZy all selections
+10$	lda	#$ff	; fuZZy them all up first
+	sta	DstSels,y
+	iny
+	cpy	#16	; to save empty block cases
+	blt	10$
+
+	mvw	DstBPtrT,A2	; set first page pointers
+	avw	#2,A2
+	cpw	A2,DstBPtrB	; is there anything to show?
+	bge	11$
+	mvw	DstBPtrT,A3	; set end of this page
+	avw	#256,A3
+	ldb	A0L,#$22	; first filename Y position
+	ldb	Temp1+19,#0
+	ldw	A5,DstSels
+	ldw	A6,#$b6
+	jsr	UpDFNames
+
+11$:	mvw	DstBPtrT,A2	; set first page pointers
+	avw	#258,A2
+	cpw	A2,DstBPtrB	; is there anything to show?
+	bge	12$
+	mvw	DstBPtrT,A3	; set end of this page
+	avw	#512,A3
+	avb	#$03,A0L	; first filename Y position
+	ldb	Temp1+19,#0
+	ldw	A5,DstSels+8
+	ldw	A6,#$b6
+	jsr	UpDFNames
+
+12$:	rts
+
+
+DoMoveR:	ldw	A0,#SrcBlk1+2	; start with first block
+	ldb	Temp3,#0	; index into SrcSels
+	ldb	Temp3+1,#0	; refresh dest flag
+	mvw	DstBPtrB,Temp3+7	; save for updated chk later
+DMLp1:	ldy	Temp3
+	lda	SrcSels,y	; was this one selected?
+	cmp	#$01
+	bne	DMLp2	; if yes, skip ahead
+	jsr	AddA0UseA1
+	mvw	Temp3+5,R1	; new block, so
+	ldw	R0,#256
+	jsr	ClearRam	; initialize it please
+	ldb	Temp3+1,#$ff	; set dirty flag
+DMLp2:	avw	#32,A0	; increment block pointer
+	inc	Temp3	; increment index to srcsels
+	cbi	Temp3,#16	; have we exceeded 2 pgs?
+	bne	11$
+	lda	Temp3+1	; any dest changes?
+	beq	10$	; *** next two lines
+	lda	#0		; *** could be much smarter
+	jsr	UpdateS	; yes so update (clr boxes?)
+	mvw	DstBPtrT,Temp3+5	; determine if dest refresh ok
+	avw	#512,Temp3+5	; by seeing if DstBPtrB inside
+	cpw	Temp3+7,Temp3+5	; viewable block
+	bge	10$
+	jsr	UpdateD	; and possibly add filenames?
+10$:	rts		; and exit
+11$:	cbi	Temp3,#8	; ready to flip to page 2?
+	bne	12$	; no, so continue
+	ldw	A0,#SrcBlk2	; start with first block
+	avw	#2,A0	; and increment to second one
+12$:	jmp	DMLp1	; and move on
+
+DoMoveL:	mvw	DstBPtrB,A8	; save for much much later
+	mvw	DstBPtrT,A7	; and save this too
+	mvw	DstBPtrT,A0	; start with first block
+	avw	#2,A0
+	ldb	Temp3,#0	; index into SrcSels & actual
+	sta	Temp3+1	; refresh dest flag
+	sta	Temp3+2	; actual counter
+	sta	Temp3+3	; page counter
+	
+DMLLp1:	cbi	Temp3,#16
+	bge	11$
+	ldy	Temp3
+	lda	DstSels,y	; was this one selected?
+	cmp	#$01
+	beq	12$	; if yes, then initialiZe?
+11$:	cpw	A0,DstBPtrB
+	blt	DMLLp2
+	jsr	AddA0UseA1
+	jmp	DMLLp2
+12$:	cpw	A0,DstBPtrB
+	bge	DMLLp2
+	ldb	Temp3+1,#$ff
+	mvw	A0,DstBPtrB
+DMLLp2:	avw	#32,A0	; increment block pointer
+	cpw	A0,A8	; have we exceeded all pgs?
+	blt	12$
+	lda	Temp3+1	; any dest changes?
+	beq	11$
+	mvw	DstBPtrB,R1
+	mvw	A8,R0
+	sbw	R1,R0
+	jsr	ClearRam
+	lda	#0		; *** could be much smarter
+	jsr	UpdateS	; yes so update (clr boxes?)
+	jsr	UpdateD	; and possibly add filenames?
+11$:	rts		; and exit
+12$:	inc	Temp3	; increment index to srcsels
+	inc	Temp3+3
+	cbi	Temp3+3,#8	; ready to flip to page 2?
+	bne	13$	; no, so continue
+	ldb	Temp3+3,#0
+	avw	#256,A7	; increment old DstBPtrT
+	mvw	A7,A0	; start with first block
+	avw	#2,A0	; and giddi-up
+13$:	jmp	DMLLp1	; and ramble on
+
+AddA0UseA1:	mvw	DstBPtrB,A1	; set up to add new one
+	ldy	#0
+10$:	lda	(A0),y
+	sta	(A1),y	; copy over new entry
+	iny
+	cpy	#32	; and be happy
+	blt	10$
+	mvw	DstBPtrT,Temp3+5
+11$:	inc	Temp3+6	; increment pager
+	cpw	DstBPtrB,Temp3+5
+	bge	11$	; loop until have next page blk
+	avw	#32,DstBPtrB	; now increment dest
+	cpw	DstBPtrB,Temp3+5	; did we move past barrier?
+	blt	12$
+	mvw	Temp3+5,DstBPtrB	; move in new spot
+	avw	#$02,DstBPtrB	; and set to correct offset
+12$:	rts
+
+DoInsBlank:	ldw	A0,#Blank
+	jsr	AddA0UseA1
+	jsr	UpdateD
+	rts
+Add8Blanks:	mvw	DstBPtrB,Temp2+6	; save the end dest pointer
+	ldb	Temp2+3,#0
+11$:	ldw	A0,#Blank	; add eight blanks for fun
+	jsr	AddA0UseA1
+	inc	Temp2+3
+	cbi	Temp2+3,#8
+	blt	11$
+	mvw	Temp2+6,DstBPtrB	; restore the end dest ptr
+	rts
+Blank:	.byte	$00,$ff,$ff
+	.byte $a0,$a0,$a0,$a0,$a0,$a0,$a0,$a0
+	.byte $a0,$a0,$a0,$a0,$a0,$a0,$a0,$a0
+	.byte	$00,$00,$00,$00,$00,$00,$00,$00
+	.byte	$00,$00,$00,$00,$00
+
+DrwScn:	lda	#0	; prepare to clear screen
+	jsr	SetPattern
+	ldb	R2L,#0
+	ldb	R2H,#199
+	ldw	R3,#0
+	mvw	rightMargin,R4
+	jsr	Rectangle	; clear the screen
+	jsr	$c1a8	; i_GraphicsString
+CVT3:	.byte	$01,$2c,$00,$1b	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$95,$00,$a5	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$ac,$00,$1b	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$15,$01,$a5	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$06,$b9,$00,$18,$18,"New Directory",27,0
+	jsr	$c1a8	; i_GraphicsString
+CVT4:	.byte	$06,$33,$00,$18,$18,"Existing Directory",27,0
+	jsr	$c1a8	; i_GraphicsString
+
+
+CVT5:	.byte	$01,$96,$00,$1d	; MOVEPENTO Xl,Xh,Y
+	.byte	$05,$01	; NEWPATTERN
+	.byte	$03,$99,$00,$a6	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$16,$01,$1d	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$19,$01,$a8	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$2f,$00,$a5	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$99,$00,$a8	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$b0,$00,$a5	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$19,$01,$a8	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$9c,$00,$35	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$a8,$00,$40	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$9f,$00,$3a	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a3,$00,$3a	; LINETO Xl,Xh,Y
+	.byte	$01,$a2,$00,$37	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a5,$00,$3a	; LINETO Xl,Xh,Y
+	.byte	$01,$a5,$00,$3a	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a2,$00,$3d	; LINETO Xl,Xh,Y
+	.byte	$01,$9c,$00,$43	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$a8,$00,$4e	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$a0,$00,$48	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a4,$00,$48	; LINETO Xl,Xh,Y
+	.byte	$01,$9e,$00,$48	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a1,$00,$45	; LINETO Xl,Xh,Y
+	.byte	$01,$9e,$00,$48	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a1,$00,$4b	; LINETO Xl,Xh,Y
+	.byte	$01,$94,$00,$5f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$2c,$00,$5f	; LINETO Xl,Xh,Y
+	.byte	$01,$2c,$00,$3c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$33,$00,$3c	; LINETO Xl,Xh,Y
+	.byte	$01,$2d,$00,$81	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$34,$00,$81	; LINETO Xl,Xh,Y
+	.byte	$01,$8f,$00,$81	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$95,$00,$81	; LINETO Xl,Xh,Y
+	.byte	$01,$96,$00,$3c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$8f,$00,$3c	; LINETO Xl,Xh,Y
+	.byte	$01,$ac,$00,$5f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$15,$01,$5f	; LINETO Xl,Xh,Y
+	.byte	$01,$ad,$00,$3c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$b3,$00,$3c	; LINETO Xl,Xh,Y
+	.byte	$01,$ac,$00,$81	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$b3,$00,$81	; LINETO Xl,Xh,Y
+	.byte	$01,$15,$01,$3c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$10,$01,$3c	; LINETO Xl,Xh,Y
+	.byte	$01,$16,$01,$81	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$10,$01,$81	; LINETO Xl,Xh,Y
+	.byte	$01,$9c,$00,$50	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$a8,$00,$6a	; FRAME_RECTO  Xl,Xh,Y
+
+
+;right
+	.byte	$01,$9c,$00,$6c	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$a8,$00,$77	; FRAME_RECTO  Xl,Xh,Y
+	;.byte	$01,$9f,$00,$71	; MOVEPENTO Xl,Xh,Y
+	;.byte	$02,$a3,$00,$71	; LINETO Xl,Xh,Y
+	.byte	$01,$a2,$00,$6e	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a5,$00,$71	; LINETO Xl,Xh,Y
+	.byte	$01,$a5,$00,$71	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a2,$00,$74	; LINETO Xl,Xh,Y;;;**eoa
+	.byte	$01,$a4,$00,$6e	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a7,$00,$71	; LINETO Xl,Xh,Y
+	.byte	$01,$a7,$00,$71	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a4,$00,$74	; LINETO Xl,Xh,Y;;;***eoa
+	.byte	$01,$a0,$00,$6e	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a3,$00,$71	; LINETO Xl,Xh,Y
+	.byte	$01,$a3,$00,$71	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a0,$00,$74	; LINETO Xl,Xh,Y;;;***eoa
+;left
+	.byte	$01,$9c,$00,$7a	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$a8,$00,$85	; FRAME_RECTO  Xl,Xh,Y
+	;.byte	$01,$9f,$00,$7f	; MOVEPENTO Xl,Xh,Y
+	;.byte	$02,$a3,$00,$7f	; LINETO Xl,Xh,Y
+	.byte	$01,$a0,$00,$7c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$9d,$00,$7f	; LINETO Xl,Xh,Y
+	.byte	$01,$9d,$00,$7f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a0,$00,$82	; LINETO Xl,Xh,Y
+	.byte	$01,$a2,$00,$7c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$9f,$00,$7f	; LINETO Xl,Xh,Y
+	.byte	$01,$9f,$00,$7f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a2,$00,$82	; LINETO Xl,Xh,Y
+	.byte	$01,$a4,$00,$7c	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a1,$00,$7f	; LINETO Xl,Xh,Y
+	.byte	$01,$a1,$00,$7f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a4,$00,$82	; LINETO Xl,Xh,Y
+
+	.byte	$06,$9e,$00,$58,$18,"X",27,0
+
+	jsr	$c1a8	; i_GraphicsString
+CVT6:	.byte	$01,$9f,$00,$5f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a4,$00,$5f	; LINETO Xl,Xh,Y
+	.byte	$01,$a2,$00,$5b	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a6,$00,$5f	; LINETO Xl,Xh,Y
+	.byte	$01,$a6,$00,$5f	; MOVEPENTO Xl,Xh,Y
+	.byte	$02,$a2,$00,$63	; LINETO Xl,Xh,Y
+	.byte	$00	; end of table
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap00
+CVB1:	.byte	$24,$18,$02,$90	; col, row, width, height
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap00
+CVB2:	.byte	$02,$18,$02,$90	; col, row, width, height
+	jsr	$c1a8	; i_GraphicsString
+CVT7:	.byte	$01,$04,$00,$03	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$3a,$01,$c4	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$04,$00,$05	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$3a,$01,$0f	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$04,$00,$07	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$3a,$01,$0d	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$04,$00,$09	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$3a,$01,$0b	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$24,$01,$05	; MOVEPENTO Xl,Xh,Y
+	.byte	$05,$00	; NEWPATTERN
+	.byte	$03,$39,$01,$0d	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$29,$01,$06	; MOVEPENTO Xl,Xh,Y
+	.byte	$05,$01	; NEWPATTERN
+	.byte	$03,$34,$01,$0c	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$24,$01,$03	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$3a,$01,$0f	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$06,$65,$00,$0c,$1a,$18,"The Major ReOrg 2.1",27,0
+	lda	#[(ClkBoxes)
+	sta	$02	; R0L
+	lda	#](ClkBoxes)
+	sta	$03	; R0H
+	jsr	$c15a	; DoIcons - start click boxes
+	rts		; exit from screen routine
+ClkBoxes:	.byte	$01,$00,$00,$00	; # clkboxes, mouse Xl,Xh,Y
+	.word Bitmap02
+CVB3:	.byte	$11,$af,$06,$10	; col, row, width, height
+	.word DoDone	; routine to execute on done
+DoNada:	rts
+
+;****************************************************
+;* DoDone - called when the Done button is hit.  Ensures all source
+;* files are copied to dest window.  Adds some trailing blank entries
+;* to the dest block, writes back dest blocks, and saves BAM.
+;****************************************************
+DoDone:	jsr	AllMoved	; are all src files in dest?
+	beq	10$	; if yes, skip ahead
+	jsr	i_CNCLBox	; if not, cancel
+	.word MAJtxt2
+	rts
+10$:	jsr	Add8Blanks	; now add 8 dest blanks
+15$:	jsr	WrDnAlloc	; write dest & alloc new blks
+	beq	16$
+	jsr	FError
+	jmp	ByeByeNow
+16$:	ldy	#0	; check for stray src sectors
+	lda	(A1),y
+	beq	17$
+	sta	R6L	; by pulling from A1 list
+	iny
+	lda	(A1),y	; both bytes
+	sta	R6H
+	jsr	FreeBlock	; then free the sector
+	avw	#2,A1	; point to next
+	bra	16$	; and go back for more
+17$:	jsr	PutDirHead	; now update BAM
+	jsr	OpenDisk	; and re-open the disk
+	jsr	i_OKBox
+	.word MAJtxt0
+	jsr	ClrScrn
+	jsr	AbtBox
+	jmp	ByeByeNow
+MAJtxt0:	.byte	$18,"Directory updated.",27,0
+MAJtxt1:	.byte	$18,"Save Changes?",27,0
+MAJtxt2:	.byte	$18,"Please move all files first.",27,0
+
+;****************************************************
+;* WrDnAlloc - Traverses DestBlks to save directory entries back
+;* onto disk, using sectors in DirChain.  Will continue until DirChain is
+;* exhausted, after which it will allocate its own sectors.
+;* Uses A1-A5, and R1,R4
+;****************************************************
+WrDnAlloc:	ldw	A1,#DirChain+2	; points to NEXT TNS block
+	ldw	A2,#DestBlks	; init dest blocks traversal
+	ldw	A3,#DestBlks+254	; pointers, here and ahead
+	mvw	DirChain,A4	; snag the First TNS to write
+WrDN2:	ldy	#0	; snag the TNS to write
+	lda	(A1),y	; and snag NEXT TNS block
+	sta	A5L	; and save it here for later
+	iny
+	lda	(A1),y
+	sta	A5H	; now done with that
+	cpw	A3,DstBPtrB	; is this the last dest block?
+	bge	12$	; if span DstBPtrB, then yes
+	lda	A5L	; is there a NEXT-ALLOC block?
+	bne	13$	; if yes, then keep going
+	mvw	A4,R3	; get ready to allocate
+	jsr	SetNextFree	; and allocate new block
+	mvw	R3,A5	; and write NEXT TNS back
+	bra	13$	; now skip ahead to actual wr
+12$:	ldw	A5,#$ff00	; set last block pointers	
+13$:	ldy	#0
+	lda	A5L	; now copy over NEXT chain
+	sta	(A2),y
+	iny
+	lda	A5H	; into dest block buffer
+	sta	(A2),y
+	jsr	FindDirEntries
+	mvw	A2,R4	; set pointer to buffer
+	mvw	A4,R1	; restore this block to write
+	jsr	PutBlock	; AND WRITE IT, YEAH!!!
+	cpx	#0	; check for an error
+	bne	15$
+14$:	cpw	A3,DstBPtrB	; was this the last block?
+	blt	16$	; if spanned DstBPtrB, then yes
+	ldx	#0	; return no worries
+15$:	rts
+16$:	avw	#2,A1	; increment sectors
+	avw	#256,A2	; movw dest buffers along
+	avw	#256,A3
+	mvw	A5,A4	; move NEXT block into THIS
+	jmp	WrDN2	; and go back for more
+
+FindDirEntries:	ldy	#2
+10$:	lda	(A2),y	; check this entru
+	and	#$0f	; filter the irrelevant
+	cmp	#$06	; is it a sixer?
+	beq	12$	; if yes, skip ahead
+99$:	cpy	#200	; was this the last?
+	blt	11$
+	rts
+11$:	tya
+	add	#32
+	tay
+	bne	10$
+12$:	tya
+	pha
+	iny
+	lda	(A2),y
+	sta	R1L
+	iny
+	lda	(A2),y
+	sta	R1H
+	ldw	R4,#SrcBlk2
+	jsr	GetBlock
+	ldy	#36
+	lda	A4L
+	sta	SrcBlk2,y
+	iny
+	lda	A4H
+	sta	SrcBlk2,y
+	iny
+	pla
+	sta	SrcBlk2,y
+	pha
+	ldw	R4,#SrcBlk2
+	jsr	PutBlock
+	pla
+	tay
+	bne	99$
+
+DoClose:	jsr	i_YNBox
+	.word MAJtxt1
+	cbi	sysDBData,#$03
+	beq	10$
+	jsr	ClrScrn
+	jsr	AbtBox
+	jmp	ByeByeNow
+10$:	jmp	DoDone
+
+AllMoved:	ldw	A0,#DirChain
+AM1:	ldy	#0
+	lda	(A0),y
+	sta	R1L
+	iny
+	lda	(A0),y
+	sta	R1H
+	ldw	R4,#SrcBlk1
+	jsr	GetBlock
+	cpx	#0
+	beq	10$
+	jsr	FError
+	jmp	ByeByeNow
+10$:	ldw	A2,#SrcBlk1+2
+11$:	ldy	#0	; is this a real file?
+	lda	(A2),y	; check file type...
+	beq	12$	; if eq, then skip other chks
+	jsr	FSrcNDst	; if in src, check for dest
+	beq	12$
+	ldx	#$ff	; not found, so return error
+	rts
+12$:	avw	#32,A2	; move to next file
+	cwi	A2,#SrcBlk1+254	; see if done with this block
+	blt	11$	; if not, continue
+	avw	#2,A0	; done w/ block, so set nxt
+	ldy	#0
+	lda	(A0),y	; was that the last block?
+	beq	13$
+	jmp	AM1	; no, so keep looking
+13$:	ldx	#0	; return an ALL-GOOD
+	rts
+
+DlgBox:	lda	#[(DlgDat)
+	sta	$02	; set lsb for dialog data
+	lda	#](DlgDat)
+	sta	$03	; set msb for dialog data
+	jmp	$c256	; call DoDlgBox and leave!
+DlgDat:	.byte	$81	; size flag, and shadow pattern
+	.byte	$0b,$12,$13	; static text
+	.word DlgD00
+	.byte	$0b,$12,$23	; static text
+	.word DlgD01
+	.byte	$0c,$30,$23	; static text
+	.byte	A2L
+	.byte	$01,$02,$48	; OK button
+	.byte	$06,$09,$48	; DISK button
+	.byte	$12,$10,$48	; user clickbox
+	.word DlgU00
+	.byte	$0b,$24,$35	; static text
+	.word DlgD02
+	.byte	$13	; all external dialog gfx
+	.word DlgGfx
+	.byte	$11	; set otherPressVec
+	.word OpenPres
+	.byte	$00	; end of table
+DlgD00:	.byte	$1a,$18,"The Major ReOrg v2.1",27,0
+DlgD01:	.byte	$18,"Disk:",27,0
+DlgD02:	.byte	"Use System directory",27,0
+DlgGfx:	jsr	$c1a8	; i_GraphicsString
+CVT8:	.byte	$01,$53,$00,$4e	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$5f,$00,$58	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$00	; end of table
+	rts
+DlgU00:	.word Bitmap04	; pointer to graphics data
+	.word $ffff
+CVP1:	.byte	$06,$10	; pic width and height
+	.word FBOXswdv
+DlgR00:	lda	#$14	; sysDBData code
+	sta	$851d
+	jmp	$c2bf	; RstrFrmDialogue
+
+
+FBOXchgd:
+10$:	ldw	R0,#FBOXcdbx	; handle swap disk box
+	jsr	DoDlgBox
+	jsr	OpenDisk	;open new disk
+	cpx	#0
+	bne	10$
+	rts
+
+FBOXcdbx:	.byte	$80 | $01
+	.byte	11	;add text
+	.byte	$0e,$12
+	.word FBOXtxt7
+	.byte	$01,$0f,$42	;OK icon
+	.byte	0	;end of defintion
+FBOXtxt7:  .byte	$18,"Insert new disk.",27,0
+
+
+
+FBOXswdv:	jsr	FBOXswd2
+	cpx	#$00	;check for error!
+	beq	21$
+	jsr	FBOXswd2
+	ldb	sysDBData,#$02	;error detected, return abort!
+	jmp	RstrFrmDialog
+21$:	ldb	sysDBData,#$14
+	jmp	RstrFrmDialog	;no error, jump back
+
+FBOXswd2:	ldy	curDrive
+	iny
+	cpy	#12
+	bne	11$
+	ldy	#8
+11$:	tya
+	pha
+	jsr	SetDevice
+	pla
+	cmp	curDrive
+	beq 12$
+	sta	curDrive
+	bra	FBOXswd2
+12$:	jsr	OpenDisk
+	cpx	#0
+	bne	FBOXswd2
+	rts
+
+AbtBox:	mvb	GMode+1,AbtDat+4
+	mvb	GMode+1,AbtDat+6
+	inc	AbtDat+6
+	lda	#[(AbtDat)
+	sta	$02	; set lsb for dialog data
+	lda	#](AbtDat)
+	sta	$03	; set msb for dialog data
+	jmp	$c256	; call DoAbtBox and leave!
+AbtDat:	.byte	$01	; size flag, and shadow pattern
+	.byte	$20,$b5,$40,$00,$1e,$01	; dialog box dimensions
+	.byte	$0b,$06,$0b	; static text
+	.word AbtT00
+	.byte	$0b,$06,$17	; static text
+	.word AbtT01
+	.byte	$0b,$06,$21	; static text
+	.word AbtT02
+	.byte	$0b,$07,$2a	; static text
+	.word AbtT03
+	.byte	$0b,$07,$3c	; static text
+	.word AbtT04
+	.byte	$0b,$07,$47	; static text
+	.word AbtT05
+	.byte	$0b,$07,$52	; static text
+	.word AbtT06
+	.byte	$0b,$07,$60	; static text
+	.word AbtT07
+	.byte	$01,$12,$7e	; OK button
+	.byte	$00	; end of table
+AbtT00:	.byte	$1a,$18,"The Major ReOrg v2.1",27,0
+AbtT01:	.byte	"This program is SHAREWARE.  Distribute it",27,0
+AbtT02:	.byte	"as you like.  Send $10 reg. fee to:",27,0
+AbtT03:	.byte	"following address:",27,0
+AbtT04:	.byte	"Bo Zimmerman",27,0
+AbtT05:	.byte	"1907 Cameo Drive",27,0
+AbtT06:	.byte	"Round Rock, TX  78664",27,0
+AbtT07:	.byte	"Email: bo@zimmers.net",27,0
+
+
+
+Bitmap00:
+
+
+<img src="00064.png" />Bitmap02:
+
+<img src="00065.png" />Bitmap04:
+
+<img src="00067.png" />Bitmap05:
+<img src="00066.png" />
+; that's all folks!
+
+DEFHead:	.byte	$00,$ff
+	.byte	$03,$15,$bf
+sFolder:	.byte	127,224,0	; DEF SPRITE -- 0-2
+	.byte	128,16,0	;3-5
+	.byte	128,31,255	;6-8
+	.byte	128,0,1	;9-11
+	.byte	128,0,1	;12-14
+	.byte	128,0,1	;15-17
+	.byte	128,0,1	;18-20
+	.byte	128,0,1	;21-23
+	.byte	128,0,1	;24
+	.byte	128,0,1	;27
+	.byte	128,0,1	;30
+	.byte	128,0,1	;33
+	.byte	128,0,1	;36
+	.byte	255,255,255	;39
+	.byte	0,0,0	;42
+	.byte	0,0,0	;45
+	.byte	0,0,0	;48
+	.byte	0,0,0	;51
+	.byte	0,0,0	;54
+	.byte	0,0,0	;57
+	.byte	0,0,0	;60
+	.byte	$82 ; SEQ
+	.byte	0	; NON-GEOS
+	.byte	0
+	.word	0
+	.word	$0000
+	.word	$0000
+	.byte	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,$00
+	.byte	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+	.byte	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,$00
+	.byte	$00,$00,$00,$00,$00,$00,$00,$00
+	.byte	$00,$00,$00,$00,$00,$00,$00,$00
+	.block	144-117
+
+sFolder2:	.byte	127,224,0	; DEF SPRITE -- 0-2
+	.byte	128,16,0	;3-5
+	.byte	128,31,255	;6-8
+	.byte	128,0,1	;9-11
+	.byte	128,0,1	;12-14
+	.byte	128,0,1	;15-17
+	.byte	128,0,1	;18-20
+	.byte	128,0,1	;21-23
+	.byte	128,0,1	;24
+	.byte	128,0,1	;27
+	.byte	128,0,1	;30
+	.byte	128,0,1	;33
+	.byte	128,0,1	;36
+	.byte	255,255,255	;39
+	.byte	0,0,0	;42
+	.byte	0,0,0	;45
+	.byte	0,0,0	;48
+	.byte	0,0,0	;51
+	.byte	0,0,0	;54
+	.byte	0,0,0	;57
+	.byte	0,0,0	;60
+	.byte	14
+
+.ramsect
+GMode:	.block 2
+Temp1:	.block 20
+Temp2:	.block 10
+Temp3:	.block 10
+
+SysDir:	.block 2	; sys dir flag
+DiskName:	.block 20	; name of this disk
+DirChain:	.block 512	; tracks n secs of directory
+SrcDCPtr:	.block 2	; pointer into DirChain
+SrcTNS1:	.block 2	; work pointer to src blk 1
+SrcTNS2:	.block 2	; work pointer to src blk 2
+SrcBlk1:	.block 256
+SrcBlk2:	.block 256
+SrcSels:	.block 16	; two pages of selections
+SrcLdF:	.block 1	; flag for reloading
+IsFolderOn:	.block 1	; whether sprite is on.
+
+SelWin:	.block 1	; 0=Src, 1=Dst
+SelLst:	.block 1	; last selected
+BoxIdx:	.block 1	; counts BoxPres8 index
+BoxFnd:	.block 1	; which index BoxPres8 2 find
+TmpFDex:	.block 1	; temporary dragged index
+
+DstBPtrT:	.block 2	; destination block top pointer
+DstBPtrB:	.block 2	; destination block bot pointer
+DstSels:	.block 16	; two pages of selections
+DestBlks:	.block 10240		; the rest of memory
+</pre></body></html>

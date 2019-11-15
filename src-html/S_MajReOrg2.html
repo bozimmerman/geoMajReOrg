@@ -1,0 +1,939 @@
+<!DOCTYPE html><html><head><title>Untitled</title></head><body><pre>
+.noeqin
+.if Pass1
+.include GEOSequates
+.endif
+.eqin
+
+Information:	ldw	A3,#SrcBlk1	; first find which block
+	mvb	SelLst,TmpFDex	; compare A3 to SrcBlk2 later
+	dec	TmpFDex	; and copy over work index
+	cbi	TmpFDex,#7
+	ble	10$	; if in second page
+	ldw	A3,SrcBlk2	; fix for second page
+	svb	#8,TmpFDex
+10$:	avw	#2,A3	; now get pointer
+	ldx	TmpFDex	; by looping in 32 chunks
+	beq	12$
+11$:	avw	#32,A3
+	dex		; until we point to real entry
+	bne	11$
+12$:	jsr	PrepHdr	; get Info Block 
+	bne	99$	; BNE is an error
+16$:	ldy	#3	; copy over filename
+17$:	lda	(A3),y
+	beq	13$
+	cmp	#$A0	; stop at A0, of course
+	beq	13$
+	sta	EditFile-3,y
+	iny
+	bne	17$
+13$:	lda	#0
+	sta	EditFile-3,y	; the final zero	
+	mvw	A3,SaveFEnt
+	jsr	InfoBox
+	lda	sysDBData
+	beq	99$
+	mvw	SaveFEnt,A3
+	jmp	Save
+99$:	rts
+
+
+PrepHdr:	ldy	#$13	; is there an info sector?
+	lda	(A3),y
+	bne	13$	; EQ means no, so skip
+	jmp	PrepHdr2
+13$:	sta	R1L
+	iny
+	lda	(A3),y	; get rest of info T&S
+	sta	R1H
+	ldw	R4,#InfoBlock
+	jsr	GetBlock	; now we got it!
+	cpx	#0
+	beq	10$
+	rts		; exit with error!!
+10$:	lda	InfoBlock+$45	; is geos type?
+	ldy	#0	; now copy over class
+11$:	lda	InfoBlock+$4d,y
+	sta	EditClass,y
+	iny
+	cpy	#12	; 0-11 are the class
+	blt	11$
+	ldb	EditClass+12,#0	; and put the end
+12$:	lda	InfoBlock+$4d,y	; now copy over version
+	sta	EditVer-12,y
+	iny
+	cpy	#16	; 12-16 are the ver
+	blt	12$
+	ldb	EditVer+4,#0	; and put the end	er..done?
+	sta	InfoBlock+$4d,y
+	mvw	InfoBlock+$47,R0L
+	ldw	A2,#EditLoad
+	jsr	HexW
+	mvw	InfoBlock+$49,R0L
+	ldw	A2,#EditEnd
+	jsr	HexW
+	mvw	InfoBlock+$4b,R0L
+	ldw	A2,#EditExe
+	jsr	HexW
+	ldx	#0
+	rts
+PrepHdr2:	ldy	#0	; remember YOUR T&S!!
+16$:	lda	DEFHEAD,y	; for later!
+	sta	InfoBlock,y
+	iny
+	bne	16$
+	ldb	EditVer,#0	; init irrelevant
+	ldb	EditClass,#0
+	ldb	EditLoad,#0
+	ldb	EditExe,#0
+	ldb	EditEnd,#0
+	ldy	#$00	; copy over relavent data
+	lda	(A3),y
+	sta	InfoBlock+$44	; this is the DOS type
+	ldy	#$15
+	lda	(A3),y
+	sta	InfoBlock+$46	; this is the STRUCT type
+	ldy	#$16
+	lda	(A3),y
+	sta	OldGeoType
+	sta	InfoBlock+$45	; this is the GEOS type
+17$:	ldx	#$00
+	rts
+
+InfoBox:	mvb	GMode+1,InfoDat+4
+	mvb	GMode+1,InfoDat+6
+	inc	InfoDat+6
+	lda	#[(InfoDat)
+	sta	$02	; set lsb for dialog data
+	lda	#](InfoDat)
+	sta	$03	; set msb for dialog data
+	jmp	$c256	; call DoDlgBox and leave!
+InfoDat:	.byte	$01	; size flag, and shadow pattern
+	.byte	$11,$bd,$33,$00,$21,$01	; dialog box dimensions
+	.byte	$0b,$07,$17	; static text
+	.word DlgT00
+	.byte	$0b,$07,$25	; static text
+	.word DlgT01
+	.byte	$0b,$07,$33	; static text
+	.word DlgT02
+	.byte	$0b,$07,$41	; static text
+	.word DlgT03
+	.byte	$0b,$07,$4e	; static text
+	.word DlgT04
+	.byte	$0b,$90,$4e	; static text
+	.word DlgT05
+	.byte	$0b,$50,$4e	; static text
+	.word DlgT06
+	.byte	$0b,$07,$5d	; static text
+	.word DlgT07
+	.byte	$0b,$07,$6b	; static text
+	.word DlgT08
+	.byte	$0b,$69,$6b	; static text
+	.word DlgT09
+	.byte	$0b,$07,$79	; static text
+	.word DlgT0a
+	.byte	$0b,$07,$87	; static text
+	.word DlgT0b
+	.byte	$0b,$07,$94	; static text
+	.word DlgT0c
+	.byte	$0b,$ba,$28	; static text
+	.word DlgT0d
+	.byte	$0b,$b6,$3a	; static text
+	.word DlgT0e
+	.byte	$0b,$07,$0a	; static text
+	.word DlgT0f
+	.byte	$11
+	.word InfoVec
+	.byte	$13	; all external dialog gfx
+	.word InfoGfx
+	.byte	$00	; end of table
+DlgT00:	.byte	"File Name:",27,0
+DlgT01:	.byte	"Dos File Type:",27,0
+DlgT02:	.byte	"GEOS File Type:",27,0
+DlgT03:	.byte	"File Structure:",27,0
+DlgT04:	.byte	"Load$",27,0
+DlgT05:	.byte	"Run$",27,0
+DlgT06:	.byte	"End$",27,0
+DlgT07:	.byte	"Class:",27,0
+DlgT08:	.byte	"Version:",27,0
+DlgT09:	.byte	"Display:",27,0
+DlgT0a:	.byte	"Author:",27,0
+DlgT0b:	.byte	"Data App:",27,0
+DlgT0c:	.byte	"Comments:",27,0
+DlgT0d:	.byte	$18,"SAVE",27,0
+DlgT0e:	.byte	$18,"CANCEL",27,0
+DlgT0f:	.byte	$18,"File Information",27,0
+
+InfoGfx:	jsr	$c1a8	; i_GraphicsString
+INF1:	.byte	$01,$7f,$00,$2d	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$ce,$00,$37	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$1f	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$f4,$00,$29	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$7f,$00,$3b	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$ce,$00,$45	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$00	; end of table
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap05
+IGX1:	.byte	$18,$2c,$02,$10	; col, row, width, height
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap05
+IGX2:	.byte	$18,$3a,$02,$10	; col, row, width, height
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap05
+IGX3:	.byte	$18,$48,$02,$10	; col, row, width, height
+	jsr	$c1a8	; i_GraphicsString
+INF2:	.byte	$01,$7f,$00,$49	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$cc,$00,$53	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$55,$00,$57	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$7a,$00,$61	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$9a,$00,$57	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$bf,$00,$61	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$d9,$00,$57	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$fe,$00,$61	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$65	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$f4,$00,$6f	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$73	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$91,$00,$7d	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$00	; end of table
+	jsr	$c1ab	; i_BitmapUp
+	.word Bitmap05
+IGX4:	.byte	$1d,$72,$02,$10	; col, row, width, height
+	jsr	$c1a8	; i_GraphicsString
+INF3:	.byte	$01,$bd,$00,$73	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$f4,$00,$7d	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$81	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$f4,$00,$8b	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$8f	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$f4,$00,$99	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$6b,$00,$9d	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$1e,$01,$bb	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$e8,$00,$42	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$0e,$01,$4e	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$e8,$00,$30	; MOVEPENTO Xl,Xh,Y
+	.byte	$07,$0e,$01,$3c	; FRAME_RECTO  Xl,Xh,Y
+	.byte	$01,$ea,$00,$3c	; MOVEPENTO Xl,Xh,Y
+	.byte	$05,$01	; NEWPATTERN
+	.byte	$03,$10,$01,$3e	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$0e,$01,$32	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$10,$01,$3d	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$ea,$00,$4f	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$10,$01,$50	; RETANGLETO  Xl,Xh,Y
+	.byte	$01,$0e,$01,$44	; MOVEPENTO Xl,Xh,Y
+	.byte	$03,$10,$01,$50	; RETANGLETO  Xl,Xh,Y
+	.byte	$00	; end of table
+	jsr	InitFields
+	rts
+
+
+InitFields:	ldw	A2,#EditFile
+	ldb	A3H,#16
+	ldb	R2L,#$17
+	jsr	PutFStd2
+
+	ldw	R0,#EditClass
+	ldb	R1H,#$5d
+	jsr	PutFStd
+
+	ldw	R0,#EditVer
+	ldb	R1H,#$6b
+	jsr	PutFStd
+
+	ldw	R0,#InfoBlock+$61
+	ldb	R1H,#$79
+	jsr	PutFStd
+
+	ldw	R0,#InfoBlock+$75
+	ldb	R1H,#$87
+	jsr	PutFStd
+
+	ldw	R0,#EditLoad
+	ldb	R1H,#$4f
+	ldw	R11,#$fff1
+	jsr	PutField
+
+	ldw	R0,#EditEnd
+	ldb	R1H,#$4f
+	ldw	R11,#$0036
+	jsr	PutField
+
+	ldw	R0,#EditExe
+	ldb	R1H,#$4f
+	ldw	R11,#$0075
+	jsr	PutField
+
+	jmp	InitFie2
+
+
+InitFie2:	jsr	ComBox
+	jsr	R3R4X2GM
+	jsr	i_PrintTBox
+	.word InfoBlock + $a0
+	.byte	2
+	.byte 90
+
+	ldb	R1L,#$00
+	avb	#$0f,R1H
+	avw	#$32,R11
+	adw	InfoDat+3,R11
+	svb	#$06,R1H
+
+	jsr	Wheelify
+
+	jsr	EFName
+	rts
+
+ComBox:	ldw	R3,#$006b+$02
+	ldw	R4,#$011e-$05
+	ldb	R2L,#$9d+$08
+	ldb	R2H,#$bb
+	rts
+
+R3R4X2GM:	lda	GMode+1
+	bne	10$
+	rts
+10$:	asl	R3L
+	rol	R3H
+	asl	R4L
+	rol	R4H
+	rts
+
+PutFStd:	ldw	R11,#$07
+PutField:	avb	#$0f,R1H
+	avw	#$32,R11
+	adw	InfoDat+3,R11
+	jsr	SVALL
+	ldw	StringFaultVec,#STRF1
+	jsr	PutString
+	jsr	RDALL
+	rts
+	
+
+GetFStd:	ldw	R11,#$07
+GetField:	ldw	keyVector,#NADA
+	ldb	R1L,#$00
+	avb	#$0f,R1H
+	avw	#$32,R11
+	adw	InfoDat+3,R11
+	svb	#$06,R1H
+	jsr	SVALL
+	ldw	StringFaultVec,#STRF1
+	jsr	GetString
+	rts
+NADA:	rts
+	jmp	RDALL
+
+SVALL:	mvw	leftMargin,SVLEFT
+	mvw	rightMargin,SVRIGHT
+	mvw	StringFaultVec,SVFAULT
+	ldw	rightMargin,#$011e
+	adw	GMode,rightMargin
+	mvw	R11,leftMargin
+	mvb	R1H,OLDY
+	rts
+RDALL:	mvw	SVRIGHT,rightMargin
+	mvw	SVLEFT,leftMargin
+	mvw	SVFAULT,StringFaultVec
+	rts
+SVRIGHT:	.block 2
+SVFAULT:	.block 2
+SVLEFT:	.block 2
+OLDY:	.block 1
+STRF1:	mvw	leftMargin,R11
+	avb	#$0a,R1H
+	jmp	PutString
+
+PutFStd2:	ldw	R3,#$07
+	ldb	A3L,#0
+PutFeld2:	avb	#$0f,R2L
+	avw	#$32,R3
+	adw	InfoDat+3,R3
+	mvw	R3,R4
+	avw	#100,R4
+	mvb	R2L,R2H
+	jsr	R3R4X2GM
+	jsr	PrintTBox
+	rts
+	
+
+GetFStd2:	ldw	R3,#$07
+	ldb	A3L,#0
+GetFeld2:	avb	#$0f,R2L
+	avw	#$32,R3
+	adw	InfoDat+3,R3
+	mvw	R3,R4
+	avw	#100,R4
+	mvb	R2L,R2H
+	jsr	R3R4X2GM
+	jsr	OpenTBox
+	rts
+
+FakeCR:	lda	#$0d
+	sta	keyData
+	lda	keyVector+1
+	beq	10$
+	jmp	(keyVector)
+10$:	rts
+
+Wheelify:	jsr	UpDOSTYPE
+	jsr	UpGEOTYPE
+	jsr	UpSTRUCT
+	jsr	UpDISPLAY
+	rts
+	
+UpDOSTYPE:	lda	InfoBlock+$44	; filter out the type to get base type
+	and	#$0f
+	tax
+	ldw	R0,#DOSTAB	; show the base type
+	jsr	TABME
+	ldb	R1H,#$25
+	ldw	R11,#$1b
+	jsr	PutField
+11$:	lda	InfoBlock+$44	; is write protected?
+	and	#$40
+	beq	99$
+	ldw	R0,#WP1
+	jmp	PutString
+99$:	ldw	R0,#SP1
+	jsr	PutString
+
+UpGEOTYPE:	ldx	InfoBlock+$45
+	ldw	R0,#GEOTAB
+	jsr	TABME
+	ldw	R11,#$1b
+	ldb	R1H,#$33
+	jmp	PutField
+
+UpSTRUCT:	ldw	R0,#STRUCT0
+	lda	InfoBlock+$46
+	beq	10$
+	ldw	R0,#STRUCT1
+10$:	ldb	R1H,#$41
+	ldw	R11,#$1b
+	jmp	PutField
+
+UpDISPLAY:	ldx	#0
+	lda	InfoBlock+$60
+	cmp	#64
+	blt	20$
+	inx
+	cmp	#128
+	blt	20$
+	inx
+	cmp	#192
+	blt	20$
+	inx
+20$:	ldw	R0,#DISTAB
+	jsr	TABME
+	ldb	R1H,#$6b
+	ldw	R11,#$59
+	jmp	PutField	
+
+TABME:	cpx	#0	; reached yet?
+	beq	99$
+	ldb	A5L,#0	; UNKNOWN flag
+10$:	inw	R0
+	ldy	#0
+	lda	(R0),y	; loop until 0
+	beq	12$
+	cmp	UNK,y	; but also compare to UNK
+	bne	10$
+	inc	A5L	; an UNK char... set flag
+	bne	10$
+	ldw	R0,#UNK	; UNKNOWN recognized...
+	rts
+12$:	inw	R0	; prepare to loop
+	dex	
+	bne	TABME	; through next entry
+99$:	rts	
+
+GEOTAB:	.byte	"NON-GEOS ",0
+	.byte	"BASIC Prg. ",0
+	.byte	"Assembly  ",0
+	.byte	"Data File   ",0
+	.byte	"System File ",0
+	.byte	"Desk Acc.  ",0
+	.byte	"Application ",0
+	.byte	"App. Data  ",0
+	.byte	"Font File   ",0
+	.byte	"Printer Drv. ",0
+	.byte	"Input Driver ",0
+	.byte	"Disk Device ",0
+	.byte	"Sys. Boot   ",0
+	.byte	"Temporary  ",0
+	.byte	"Auto Exec. ",0
+	.byte	"Input 128   ",0
+UNK:	.byte	"Unknown",0
+
+DOSTAB:	.byte	"DEL",0
+	.byte	"SEQ",0
+	.byte	"PRG",0
+	.byte	"USR",0
+	.byte	"REL",0
+	.byte	"CBM",0
+	.byte	"DIR",0
+	.byte	"Unknown",0
+WP1:	.byte	" (WP)  ",0
+SP1:	.byte	"       ",0
+
+STRUCT0:	.byte	"SEQUENTIAL",0
+STRUCT1:	.byte	"VLIR      ",0
+
+DISTAB:	.byte	"40 COLS ",0
+	.byte	"40/80  ",0
+	.byte	"64 ONLY ",0
+	.byte	"80 COLS ",0
+	.byte	"Unknown",0
+
+InfoVec:	ldw	R0,#INF1
+	jsr	ClkAll
+	beq	10$
+	bne	20$
+10$:	ldw	R0,#INF2
+	jsr	ClkAll
+	beq	11$
+	avb	#$10,ClkAllT
+	bra	20$
+11$:	ldw	R0,#INF3
+	jsr	ClkAll
+	beq	12$
+	avb	#$20,ClkAllT
+	bra	20$
+12$:	rts
+20$:	jmp	VecDo
+	nop
+
+
+VecDo:	lda	mouseData
+	bne	21$
+	rts
+21$:	jsr	FakeCR
+	cbi	ClkAllT,#$25	; cancel
+	bne	22$
+	ldb	sysDBData,#$00
+	jmp	RstrFrmDialog
+22$:	cbi	ClkAllT,#$26	; save
+	bne	23$
+	ldb	sysDBData,#$01
+	jmp	RstrFrmDialog
+23$:	cbi	ClkAllT,#$02	; fname
+	bne	24$
+	jmp	EFName
+24$:	cbi	ClkAllT,#$15	; class
+	bne	25$
+	jmp	EClass
+25$:	cbi	ClkAllT,#$16	; ver
+	bne	26$
+	jmp	EVer
+26$:	cbi	ClkAllT,#$22	; author
+	bne	27$
+	jmp	EAuthor
+27$:	cbi	ClkAllT,#$23	; app dat
+	bne	28$
+	jmp	EAppDat
+28$:	cbi	ClkAllT,#$01	; dos type
+	bne	29$
+	jmp	EDOSType
+29$:	cbi	ClkAllT,#$03	; geos type
+	bne	30$
+	jmp	EGEOType
+30$:	jmp	VecDo2
+	nop
+
+VecDo2:	cbi	ClkAllT,#$11	; file struct
+	bne	31$
+	jmp	EStruct
+31$:	cbi	ClkAllT,#$21	; display
+	bne	32$
+	jmp	EDisplay
+32$:	cbi	ClkAllT,#$12	; load
+	bne	33$
+	jmp	ELoad
+33$:	cbi	ClkAllT,#$13	; end
+	bne	34$
+	jmp	EEnd
+34$:	cbi	ClkAllT,#$14	; exe
+	bne	35$
+	jmp	EExe
+35$:	cbi	ClkAllT,#$24	; comments
+	bne	36$
+	ldw	keyVector,#NADA
+	jsr	ComBox
+	jsr	R3R4X2GM
+	jsr	i_PrintTBox
+	.word InfoBlock + $a0
+	.byte	3
+	.byte 90
+	jsr	TBOXResume
+36$:	rts
+
+ClkAll:	ldb	ClkAllT,#0
+ClkAll2:	ldy	#0
+	lda	(R0),y	; a null ends the fun
+	beq	99$
+	sta	ClkAllB
+	cmp	#$01	; movepento
+	beq	11$
+	cmp	#$07
+	bne	10$
+	ldy	ClkAllB
+	lda	FIX80x,y	; cross ref to x offset
+	beq	10$	; if EQ, skip to next step
+	tay
+	dey
+	lda	(R0),y	; otherwise, get x byte
+	sta	R4L
+	iny
+	lda	(R0),y
+	sta	R4H
+	iny
+	lda	(R0),y
+	sta	R2H
+	inc	ClkAllT
+	jsr	IsMseInRegion
+	cmp	#$ff
+	bne	10$
+	jsr	InvertRectangle
+	lda	ClkAllT
+	rts
+11$:	ldy	ClkAllB
+	lda	FIX80x,y	; cross ref to x offset
+	beq	10$	; if EQ, skip to next step
+	tay
+	dey
+	lda	(R0),y	; otherwise, get x byte
+	sta	R3L
+	iny
+	lda	(R0),y
+	sta	R3H
+	iny
+	lda	(R0),y
+	sta	R2L
+10$:	ldy	ClkAllB
+	lda	FIX80len,y	; now get next cmd offset
+	beq	99$	; eq means no more
+	clc
+	adc	R0L
+	sta	R0L
+	lda	#$00
+	adc	R0H
+	sta	R0H
+	jmp	ClkAll2
+99$:	lda	#0
+	rts
+
+
+EFName:	ldw	A2,#EditFile
+	ldb	A3H,#16
+	ldb	R2L,#$17
+	jmp	GetFStd2
+
+EClass:	ldw	R0,#EditClass
+	ldb	R1H,#$5d
+	ldb	R2L,#$0c
+	jmp	GetFStd
+
+EVer:	ldw	R0,#EditVer
+	ldb	R1H,#$6b
+	ldb	R2L,#$04
+	jmp	GetFStd
+
+EAuthor:	ldw	R0,#InfoBlock+$61
+	ldb	R1H,#$79
+	ldb	R2L,#$12
+	jmp	GetFStd
+
+EAppDat:	ldw	R0,#InfoBlock+$75
+	ldb	R1H,#$87
+	ldb	R2L,#$12
+	jmp	GetFStd
+
+EDOSType:	inc	InfoBlock + $44
+	lda	InfoBlock + $44
+	and	#$0f
+	cmp	#$07
+	blt	99$
+	lda	InfoBlock + $44
+	and	#$40	; wp set?
+	bne	10$
+	ldb	InfoBlock + $44,#$c0
+	bra	99$
+10$:	ldb	InfoBlock + $44,#$80	
+99$:	jmp	UpDOSTYPE
+
+EGEOType:	inc	InfoBlock + $45
+	lda	InfoBlock + $45
+	cmp	#$10
+	blt	99$
+	ldb	InfoBlock + $45,#$00
+99$:	jmp	UpGEOTYPE
+
+EStruct:	lda	InfoBlock + $46
+	eor	#$01
+	sta	InfoBlock + $46
+	jmp	UpSTRUCT
+
+ELoad:	ldw	R0,#EditLoad
+	ldb	R1H,#$4f
+	ldw	R11,#$fff1
+	ldb	R2L,#$04
+	jmp	GetField
+EEnd:	ldw	R0,#EditEnd
+	ldb	R1H,#$4f
+	ldb	R2L,#$04
+	ldw	R11,#$0036
+	jmp	GetField
+EExe:	ldw	R0,#EditExe
+	ldb	R1H,#$4f
+	ldb	R2L,#$04
+	ldw	R11,#$0075
+	jmp	GetField
+
+EDisplay:	lda	InfoBlock + $60
+	bne	10$
+	ldb	InfoBlock + $60,#64
+	jmp	UpDISPLAY
+10$:	lda	InfoBlock + $60
+	cmp	#64
+	bne	11$
+	ldb	InfoBlock + $60,#128
+	jmp	UpDISPLAY
+11$:	lda	InfoBlock + $60
+	cmp	#128
+	bne	12$
+	ldb	InfoBlock + $60,#192
+	jmp	UpDISPLAY
+12$:	ldb	InfoBlock + $60,#0
+	jmp	UpDISPLAY	
+
+HexW:	lda	R0H	; do the high bytes first
+	jsr	HexB	; put the high bytes in buf +1,+2
+	inw	A2
+	inw	A2	; now point to buf +3,+4
+	lda	R0L	; get the low order byte
+	jsr	HexB	; and write them out
+	dew	A2
+	dew	A2	; back up to where we started...
+	rts
+
+HexB:	sta	HexSave	; save it for a sec
+	lsr	a
+	lsr	a
+	lsr	a
+	lsr	a	; get the high nibble
+	tay
+	lda	HexTable,y
+	ldy	#0
+	sta	(A2),y	; store the high nibble digit
+	lda	HexSave
+	and	#$0f	; mask out low nibble
+	tay
+	lda	HexTable,y	; gimmi a digit
+	ldy	#1
+	sta	(A2),y	; store the low nibble digit
+	iny
+	lda	#0
+	sta	(A2),y	; store the string terminator
+	rts			
+
+HexTable:	.byte	'0','1','2','3','4','5','6','7','8','9','a','b','c','d','e','f','A','B','C','D','E','F','*'
+ValTable:	.byte	0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,10,11,12,13,14,15,0
+HexSave:	.byte	0
+
+Save:	jsr	i_YNBox
+	.word YNStr1
+	cbi	sysDBData,#$03
+	beq	90$
+	rts
+90$:	lda	InfoBlock+$45	; is geos type? 
+	beq	12$
+	ldw	R0,#EditEnd
+	jsr	UnHex
+	bne	10$
+	mvw	R1,InfoBlock+$49
+10$:	ldw	R0,#EditLoad
+	jsr	UnHex
+	bne	11$
+	mvw	R1,InfoBlock+$47
+11$:	ldw	R0,#EditExe
+	jsr	UnHex
+	bne	12$
+	mvw	R1,InfoBlock+$4b
+12$:	ldw	R0,#EditClass
+	ldw	R1,#InfoBlock+$4d
+	ldb	R2L,#12
+	jsr	SaveNFill
+	ldw	R0,#EditVer
+	ldw	R1,#InfoBlock+($4d + $0c)
+	ldb	R2L,#4
+	jsr	SaveNFill
+	lda	InfoBlock+$44
+	ldy	#$00
+	sta	(A3),y
+	lda	InfoBlock+$45
+	ldy	#$16
+	sta	(A3),y
+	lda	InfoBlock+$46
+	ldy	#$15
+	sta	(A3),y
+	ldw	R0,#EditFile-3
+	ldy	#$03
+14$:	lda	(R0),y
+	beq	15$
+	sta	(A3),y
+	iny
+	bne	14$
+15$:	cpy	#19
+	bge	17$
+16$:	lda	#$a0
+	sta	(A3),y
+	iny
+	cpy	#19
+	blt	16$
+17$:	jmp	Save2
+
+YNStr1:	.byte	"Confirm: Update this file?",27,0
+YNStr2:	.byte	"Convert this file to GEOS?",27,0
+
+
+
+Save2:	jsr	OpenDisk
+	ldy	#$13
+	lda	(A3),y
+	bne	20$
+	lda	OldGeoType	; if WAS a geotype, forget it
+	bne	20$
+	lda	InfoBlock+$45	; if is NOT a geotype now, forget it
+	beq	21$
+	jsr	i_YNBox	; otherwise, potentially convert it
+	.word YNStr2
+	cbi	sysDBData,#$03
+	beq	10$
+	rts
+10$:	jsr	geoCvrt
+	beq	20$
+	rts
+20$:	ldy	#$13
+	lda	(A3),y
+	sta	R1L
+	iny
+	lda	(A3),y
+	sta	R1H
+	ldw	R4,#InfoBlock
+	jsr	PutBlock	; saved the info block!
+	cpx	#0
+	beq	21$
+	rts
+21$:	jsr	ResetTNS
+	cwi	A3,#SrcBlk2
+	bge	25$
+	mvw	SrcTNS1,R1
+	ldw	R4,#SrcBlk1
+	jsr	PutBlock	; updated directory entry
+	lda	#1		; *** could be much smarter
+	jmp	UpdateS	; yes so update (clr boxes?)
+25$:	mvw	SrcTNS2,R1
+	ldw	R4,#SrcBlk2
+	jsr	PutBlock	; updated directory entry
+	lda	#1		; *** could be much smarter
+	jmp	UpdateS	; yes so update (clr boxes?)
+
+
+SaveNFill:	ldy	#0
+13$:	lda	(R0),y	; class loop
+	beq	14$
+	sta	(R1),y
+	iny
+	cpy	R2L
+	blt	13$
+14$:	cpy	R2L
+	bge	16$
+15$:	lda	#32
+	sta	(R1),y
+	iny
+	cpy	R2L
+	blt	15$
+16$:	rts
+
+UnHex:	ldw	R1,#0
+	ldy	#0
+10$:	lda	(R0),y
+	jsr	HexABit
+	bcs	99$
+	jsr	HiNybble
+	sta	R1H
+	iny
+	lda	(R0),y
+	jsr	HexABit
+	bcs	99$
+	ora	R1H
+	sta	R1H
+	iny
+	lda	(R0),y
+	jsr	HexABit
+	bcs	99$
+	jsr	HiNybble
+	sta	R1L
+	iny
+	lda	(R0),y
+	jsr	HexABit
+	bcs	99$
+	ora	R1L
+	sta	R1L
+	ldx	#0
+	rts
+99$:	ldx	#$ff
+	rts
+
+HexABit:	ldx	#0
+10$:	cmp	HexTable,x
+	beq	11$
+	inx
+	cpx	#22
+	blt	10$
+	lda	#0
+	sec
+	rts
+11$:	lda	ValTable,x
+	clc
+	rts
+HiNybble:	asl	a
+	asl	a
+	asl	a
+	asl	a
+	rts
+
+geoCvrt:	ldw	R2,#$05
+	ldw	R6,#BlkBuf
+	jsr	BlkAlloc
+	cpx	#0
+	beq	11$
+	rts
+11$:	ldy	#$13
+	lda	BlkBuf
+	sta	(A3),y
+	iny
+	lda	BlkBuf+1
+	sta	(A3),y
+	jsr	PutDirHead
+	cpx	#0
+	rts
+
+.ramsect
+
+ClkAllT:	.block 1
+ClkAllB:	.block 1
+SaveFEnt:	.block 2	; saving pointer to dir entry
+InfoBlock:	.block 258	; information sector
+LstRel:	.block 1	; last item released
+OldGeoType:	.block 1	; old geos type
+EditFile:	.block 17	; filename being edited
+EditClass:	.block 13	; 12 character class
+EditVer:	.block 7	; 4 char version
+EditLoad:	.block 7	; 4 char load addr
+EditExe:	.block 7	; 4 char exe addr
+EditEnd:	.block 7	; 4 char end addr
+BlkBuf:	.block 20	; new info sector t&s
+
+TheEnd:	.block 1
+</pre></body></html>
